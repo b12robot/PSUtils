@@ -158,8 +158,6 @@ function Invoke-Elevation {
     }
 }
 
-Export-ModuleMember -Function Invoke-Elevation
-
 function Write-Log {
     [CmdletBinding()]
     param(
