@@ -7,6 +7,10 @@
     If not, it re-launches the script with elevated permissions using either 
     Windows Terminal or PowerShell directly. It intelligently detects the 
     execution environment and uses the appropriate method for elevation.
+    
+    The function supports both PowerShell 5.1 and PowerShell 7, caches 
+    configuration parameters across calls, and provides flexible path 
+    configuration options.
 
 .PARAMETER ScriptPath
     Path to the script file that needs elevation. Defaults to the current script path.
@@ -18,119 +22,162 @@
 
 .PARAMETER TerminalPath
     Path to Windows Terminal executable. Defaults to the standard Windows Apps location.
-    Used when running within Windows Terminal environment.
+    Used when running within Windows Terminal environment. If not found, falls back to PowerShell.
 
 .PARAMETER PowershellPath
-    Path to PowerShell executable. Defaults to the current PowerShell installation.
-    Used as fallback or when not running in Windows Terminal.
+    Path to PowerShell 5.1 executable. Defaults to the current PowerShell installation.
+    Used when PowershellVersion is set to '5'
+
+.PARAMETER Powershell7Path
+    Path to PowerShell 7 executable. Defaults to the standard Program Files location.
+    Used when PowershellVersion is set to '7'
+
+.PARAMETER PowershellVersion
+    Specifies which PowerShell version to use for elevation.
+    Valid values: '5', '7'
+    Defaults to '5'
 
 .PARAMETER ExecutionPolicy
     Execution policy to use for the elevated script. Defaults to 'RemoteSigned'.
-    Valid values: Restricted, AllSigned, RemoteSigned, Unrestricted, Bypass, Undefined.
+    Valid values: Restricted, AllSigned, RemoteSigned, Unrestricted, Bypass, Undefined
 
 .EXAMPLE
     Invoke-Elevation
-    Elevates the current script with default settings.
+    Elevates the current script with default settings using PowerShell 5.1.
 
 .EXAMPLE
     Invoke-Elevation -ScriptPath "C:\Scripts\MyScript.ps1" -ExecutionPolicy Bypass
     Elevates a specific script with bypass execution policy.
 
 .EXAMPLE
-    Invoke-Elevation -WorkingDirectory "C:\MyProject" -ExecutionPolicy Unrestricted
-    Elevates current script with custom working directory and execution policy.
+    Invoke-Elevation -WorkingDirectory "C:\MyProject" -PowershellVersion PS7
+    Elevates current script with custom working directory using PowerShell 7.
+
+.EXAMPLE
+    Invoke-Elevation -TerminalPath "C:\Custom\Path\wt.exe" -ExecutionPolicy Unrestricted
+    Elevates current script using custom Windows Terminal path.
 
 .NOTES
-    - Requires Windows operating system
-    - Will exit current process if elevation is successful
-    - Uses Windows Terminal if available, otherwise falls back to PowerShell
-    - Maintains global variables for terminal and PowerShell paths across calls
+    - Requires Windows operating system.
+    - Requires PowerShell 5.1 or later.
+    - Supports both PowerShell 5.1 and PowerShell 7 execution environments.
+    - If elevation is successful, the current script will exit (when elevating itself).
+    - Uses Windows Terminal if available, otherwise falls back to PowerShell.
+    - Caches all variables across calls.
+    - Function validates all path parameters before execution.
+
+.LINK
+    https://github.com/b12robot/PSUtils
 #>
 function Invoke-Elevation {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [ValidateScript({ Test-Path $_ -PathType Leaf })]
         [string]$ScriptPath = $MyInvocation.PSCommandPath,
 
         [Parameter(Mandatory = $false)]
-        [ValidateScript({ Test-Path $_ -PathType Container })]
         [string]$WorkingDirectory = $MyInvocation.PSScriptRoot,
+
+        [Parameter(Mandatory = $false)]
+        [string]$PowershellPath = "$PSHome\powershell.exe",
+
+        [Parameter(Mandatory = $false)]
+        [string]$Powershell7Path = "$env:ProgramFiles\PowerShell\7\pwsh.exe",
 
         [Parameter(Mandatory = $false)]
         [string]$TerminalPath = "$env:LOCALAPPDATA\Microsoft\WindowsApps\wt.exe",
 
         [Parameter(Mandatory = $false)]
-        [ValidateScript({ Test-Path $_ -PathType Leaf })]
-        [string]$PowershellPath = "$PSHome\powershell.exe",
+        [ValidateSet('Restricted', 'AllSigned', 'RemoteSigned', 'Unrestricted', 'Bypass', 'Undefined')]
+        [string]$ExecutionPolicy = 'RemoteSigned',
 
         [Parameter(Mandatory = $false)]
-        [ValidateSet('Restricted', 'AllSigned', 'RemoteSigned', 'Unrestricted', 'Bypass', 'Undefined')]
-        [string]$ExecutionPolicy = 'RemoteSigned'
+        [switch]$NoTerminal = $false,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$UsePowerShell5 = $false,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$UsePowerShell7 = $false
     )
 
-    # Change WorkingDirectory if ScriptPath is provided but WorkingDirectory is not.
-    if ($PSBoundParameters.ContainsKey('ScriptPath')) {
-        if (-not $PSBoundParameters.ContainsKey('WorkingDirectory')) {
+    if (-not ([Security.Principal.WindowsPrincipal]([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+
+        # If ScriptPath is specified but WorkingDirectory is not.
+        if (-not $PSBoundParameters.ContainsKey('WorkingDirectory') -and $PSBoundParameters.ContainsKey('ScriptPath')) {
             $WorkingDirectory = Split-Path -Path $ScriptPath -Parent
         }
-    }
+        elseif (-not $PSBoundParameters.ContainsKey('WorkingDirectory') -and -not $Script:GlobalWorkingDirectory -and $Script:GlobalScriptPath) {
+            $WorkingDirectory = Split-Path -Path $Script:GlobalScriptPath -Parent
+        }
 
-    # Validate TerminalPath.
-    if ($TerminalPath -ne $Script:GlobalTerminalPath) {
-        if (-not (Test-Path $TerminalPath -PathType Leaf)) {
-            $TerminalPath = $null
+        # If Powershell7Path is specified but UsePowerShell7 is not true.
+        if (-not $PSBoundParameters.ContainsKey('UsePowerShell7') -and $PSBoundParameters.ContainsKey('Powershell7Path')) {
+            $UsePowerShell7 = $true
         }
-    }
+        elseif (-not $PSBoundParameters.ContainsKey('UsePowerShell7') -and -not $Script:GlobalUsePowerShell7 -and $Script:GlobalPowershell7Path) {
+            $UsePowerShell7 = $true
+        }
 
-    # Change GlobalTerminalPath if TerminalPath is provided else use GlobalPowershellPath.
-    if ($PSBoundParameters.ContainsKey('TerminalPath')) {
-        # Set GlobalTerminalPath if not equal to TerminalPath.
-        if ($TerminalPath -ne $Script:GlobalTerminalPath) {
-            $Script:GlobalTerminalPath = $TerminalPath
+        # Cache and validate parameters
+        $CacheMap = [ordered]@{
+            ScriptPath        = @{ Global = 'GlobalScriptPath'      ; Type = 'Leaf' }
+            WorkingDirectory  = @{ Global = 'GlobalWorkingDirectory'; Type = 'Container' }
+            TerminalPath      = @{ Global = 'GlobalTerminalPath'    ; Type = 'Leaf' }
+            PowershellPath    = @{ Global = 'GlobalPowershellPath'  ; Type = 'Leaf' }
+            Powershell7Path   = @{ Global = 'GlobalPowershell7Path' ; Type = 'Leaf' }
+            ExecutionPolicy   = @{ Global = 'GlobalExecutionPolicy' ; Type = 'Value' }
+            NoTerminal        = @{ Global = 'GlobalNoTerminal'      ; Type = 'Value' }
+            UsePowerShell7    = @{ Global = 'GlobalUsePowerShell7'  ; Type = 'Value' }
         }
-    }
-    else {
-        # Use GlobalTerminalPath if exists.
-        if ($Script:GlobalTerminalPath) {
-            $TerminalPath = $Script:GlobalTerminalPath
-        }
-    }
 
-    # Change GlobalPowershellPath if PowershellPath is provided else use GlobalPowershellPath.
-    if ($PSBoundParameters.ContainsKey('PowershellPath')) {
-        # Set GlobalPowershellPath if not equal to PowershellPath.
-        if ($PowershellPath -ne $Script:GlobalPowershellPath) {
-            $Script:GlobalPowershellPath = $PowershellPath
-        }
-    }
-    else {
-        # Use GlobalPowershellPath if exists.
-        if ($Script:GlobalPowershellPath) {
-            $PowershellPath = $Script:GlobalPowershellPath
-        }
-    }
+        foreach ($LocalName in $CacheMap.Keys) {
+            $Config = $CacheMap[$LocalName]
+            $GlobalName = $Config.Global
+            $ValidationType = $Config.Type
+            $CachedValue = Get-Variable -Name $GlobalName -ValueOnly -Scope Script -ErrorAction SilentlyContinue
+            $LocalValue = Get-Variable -Name $LocalName -ValueOnly -ErrorAction SilentlyContinue
 
-    # If current user is not an administrator, request elevation.
-    if (-not ([Security.Principal.WindowsPrincipal]([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Host 'Requesting administrative privileges...' -ForegroundColor Cyan
-        # if Terminal application exits, use TerminalPath to elevate script else use PowershellPath.
-        if ($TerminalPath) {
-            $Executable = $TerminalPath
+            if ($LocalValue -ne $CachedValue) {
+                if ($ValidationType -in @('Leaf', 'Container')) {
+                    if (-not (Test-Path -Path $LocalValue -PathType $ValidationType)) {
+                        Write-Host "Please specify a valid path.`nInvalid path for the -$LocalName parameter: $LocalValue" -ForegroundColor Red
+                        return
+                    }
+                }
+                if ($PSBoundParameters.ContainsKey($LocalName)) {
+                    Set-Variable -Name $GlobalName -Value $LocalValue -Scope Script
+                }
+                elseif ($CachedValue) {
+                    Set-Variable -Name $LocalName -Value $CachedValue
+                }
+            }
+        }
+
+        # Select PowershellExe
+        if ($UsePowerShell7) {
+            $PowershellExe = $Powershell7Path
+        }
+        else {
+            $PowershellExe = $PowershellPath
+        }
+
+        if ($NoTerminal -or -not $TerminalPath) {
+            $Executable = $PowershellExe
             $Arguments = @(
-                'new-tab', 
-                '--title', 'PowerShell', 
-                '--startingDirectory', "`"$WorkingDirectory`"", 
-                '--', 
-                "`"$PowershellPath`"", 
                 '-NoProfile', 
                 '-ExecutionPolicy', $ExecutionPolicy, 
                 '-File', "`"$ScriptPath`""
             )
         }
         else {
-            $Executable = $PowershellPath
+            $Executable = $TerminalPath
             $Arguments = @(
+                'new-tab', 
+                '--title', 'PowerShell', 
+                '--startingDirectory', "`"$WorkingDirectory`"", 
+                '--', 
+                "`"$PowershellExe`"", 
                 '-NoProfile', 
                 '-ExecutionPolicy', $ExecutionPolicy, 
                 '-File', "`"$ScriptPath`""
@@ -139,6 +186,7 @@ function Invoke-Elevation {
 
         # Start the process with elevated privileges.
         try {
+            Write-Host 'Requesting administrative privileges...' -ForegroundColor Cyan
             Start-Process -FilePath $Executable -ArgumentList $Arguments -Verb 'RunAs' -WorkingDirectory $WorkingDirectory -ErrorAction 'Stop'
             if ($ScriptPath -eq $MyInvocation.PSCommandPath) {
                 exit 0
