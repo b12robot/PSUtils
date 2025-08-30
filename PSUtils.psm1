@@ -11,38 +11,38 @@
 
 .PARAMETER ScriptPath
     Path to the script file that needs elevation.
-    Defaults to the invoked script path.
+    Default: the invoked script path.
 
 .PARAMETER WorkingDirectory
     Working directory for the elevated process.
-    Defaults to the invoked script's directory.
+    Default: the invoked script's directory.
 
 .PARAMETER Powershell5Path
     Path to PowerShell 5 executable.
-    Defaults to '$PSHome\powershell.exe'.
+    Default: '$PSHome\powershell.exe'
 
 .PARAMETER Powershell7Path
     Path to PowerShell 7 executable.
-    Defaults to '$env:ProgramFiles\PowerShell\7\pwsh.exe'.
+    Default: '$env:ProgramFiles\PowerShell\7\pwsh.exe'
 
 .PARAMETER PowershellVersion
     Which PowerShell version to use for elevation.
-    Valid values: 'Auto', '5', '7'.
-    Defaults to 'Auto'.
+    Valid values: 'Auto', '5', '7'
+    Default: 'Auto'
 
 .PARAMETER TerminalPath
     Path to Windows Terminal executable.
-    Defaults to '$env:LocalAppData\Microsoft\WindowsApps\wt.exe'.
+    Default: '$env:LocalAppData\Microsoft\WindowsApps\wt.exe'
 
 .PARAMETER TerminalMode
     Terminal usage mode.
-    Valid values: 'Auto', 'UseTerminal', 'NoTerminal'.
-    Defaults to 'Auto'.
+    Valid values: 'Auto', 'UseTerminal', 'NoTerminal'
+    Default: 'Auto'
 
 .PARAMETER ExecutionPolicy
     Execution policy to use for the elevated script.
-    Valid values: 'Restricted', 'AllSigned', 'RemoteSigned', 'Unrestricted', 'Bypass', 'Undefined'.
-    Defaults to 'RemoteSigned'.
+    Valid values: 'Restricted', 'AllSigned', 'RemoteSigned', 'Unrestricted', 'Bypass', 'Undefined'
+    Default: 'RemoteSigned'
 
 .EXAMPLE
     Invoke-Elevation
@@ -52,7 +52,7 @@
 
 .NOTES
     - Requires Windows 10 or 11 operating system.
-    - Supports PowerShell 5 and 7 versions.
+    - Requires PowerShell 5 or 7 version.
     - If elevating the running script, the original process exits after starting the elevated one.
 
 .LINK
@@ -266,47 +266,51 @@ function Invoke-Elevation {
 
 <#
 .SYNOPSIS
-Provides a flexible logging function for scripts and modules. 
-It writes messages with a timestamp and severity level (INFO, SUCC, WARN, EROR) 
-to a log file and optionally to the console with color-coded output.
+    Provides a flexible logging function for scripts and modules. 
+    It writes messages with a timestamp and severity level (INFO, SUCC, WARN, EROR) 
+    to a log file and optionally to the console with color-coded output.
 
 .DESCRIPTION
-The Write-Log function is designed to simplify logging within PowerShell scripts.  
-It automatically manages a global log file path and output mode if they are not specified.  
-Messages are written with a timestamp and log level, and when console output is enabled, 
-messages are displayed with colors for quick visual identification.
+    The Write-Log function is designed to simplify logging within PowerShell scripts.  
+    It automatically manages a global log file path and output mode if they are not specified.  
+    Messages are written with a timestamp and log level, and when console output is enabled, 
+    messages are displayed with colors for quick visual identification.
 
 .PARAMETER Message
-The log message text to be recorded. This parameter is mandatory.
+    The log message text to be recorded.
+    This parameter is mandatory.
 
 .PARAMETER LogPath
-Specifies the path of the log file. If not provided, the global path or 
-a default log file (same name as the script with `.log` extension) will be used.
+    Specifies the path of the log file.
+    Default: the invoked script path with .log extension.
 
 .PARAMETER Level
-Specifies the severity level of the log entry.  
-Accepted values: INFO, SUCC, WARN, EROR.  
-Default: INFO.
+    Specifies the severity level of the log entry.  
+    Valid values: 'INFO', 'SUCC', 'WARN', 'EROR'
+    Default: 'INFO'
 
 .PARAMETER Output
-Controls whether the message is also written to the console.  
-Accepted values: ToConsole, NoConsole.  
-Default: ToConsole.
+    Controls whether the message is also written to the console.  
+    Valid values: 'ToConsole', 'NoConsole'  
+    Default: 'ToConsole'
 
 .EXAMPLE
-Write-Log -Message "Script execution started."
-
-Writes an INFO log entry with timestamp to the default log file and console.
-
-.EXAMPLE
-Write-Log -Message "Package installed successfully" -Level SUCC -Output ToConsole
-
-Writes a success log entry in green to the console and appends it to the log file.
+    Write-Log -Message "Script execution started."
+    Writes an INFO log entry with timestamp to the default log file and console.
 
 .EXAMPLE
-Write-Log -Message "Disk space is low" -Level WARN -LogPath "C:\Logs\system.log" -Output NoConsole
+    Write-Log -Message "Package installed successfully" -Level SUCC -Output ToConsole
+    Writes a success log entry in green to the console and appends it to the log file.
 
-Writes a warning log entry to the specified log file only, without console output.
+.EXAMPLE
+    Write-Log -Message "Disk space is low" -Level WARN -LogPath "C:\Logs\system.log" -Output NoConsole
+    Writes a warning log entry to the specified log file only, without console output.
+
+.NOTES
+    - Requires Windows 10 or 11 operating system.
+    - Requires PowerShell 5 or 7 version.
+.LINK
+    https://github.com/b12robot/PSUtils
 #>
 function Write-Log {
     [CmdletBinding()]
