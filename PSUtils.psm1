@@ -255,8 +255,8 @@ function Invoke-Elevation {
         }
     }
     catch {
-        Write-Host "Failed to elevate script file: $ScriptPath" -ForegroundColor Red
-        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Failed to elevate script file: '$ScriptPath'" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
         if ($ScriptPath -eq $MyInvocation.PSCommandPath) {
             exit 1
         } else {
@@ -367,8 +367,8 @@ function Write-Log {
         }
     }
     catch {
-        Write-Host "Failed to write log file: $LogPath" -ForegroundColor Red
-        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Failed to write log file: '$LogPath'" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
         return
     }
 }
