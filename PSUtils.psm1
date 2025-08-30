@@ -329,6 +329,7 @@ function Write-Log {
         [string]$Output
     )
 
+    # Determine LogPath parameter
     if ($PSBoundParameters.ContainsKey('LogPath')) {
         if ($LogPath -ne $Script:GlobalLogPath) {
             $Script:GlobalLogPath = $LogPath
@@ -341,6 +342,7 @@ function Write-Log {
         $LogPath = [System.IO.Path]::ChangeExtension($MyInvocation.PSCommandPath, '.log')
     }
 
+    # Determine Output parameter
     if ($PSBoundParameters.ContainsKey('Output')) {
         if ($Output -ne $Script:GlobalOutput) {
             $Script:GlobalOutput = $Output
@@ -353,6 +355,7 @@ function Write-Log {
         $Output = 'ToConsole'
     }
 
+    # Write log entry to file
     try {
         $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $Entry = "$Timestamp [$($Level.ToUpper())] $Message"
