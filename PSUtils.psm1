@@ -255,13 +255,7 @@ function Invoke-Elevation {
         }
     }
     catch {
-        Write-Host "Failed to elevate script file: '$ScriptPath'" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
-        if ($ScriptPath -eq $MyInvocation.PSCommandPath) {
-            exit 1
-        } else {
-            return
-        }
+        Write-Error "$($_.Exception.GetType().Name)`nFailed to elevate script file: '$ScriptPath'`n$($_.Exception.Message)"
     }
 }
 
@@ -300,10 +294,6 @@ function Invoke-Elevation {
     Writes an INFO log entry with timestamp to the default log file and console.
 
 .EXAMPLE
-    Write-Log -Message "Package installed successfully" -Level SUCC -Output ToConsole
-    Writes a success log entry in green to the console and appends it to the log file.
-
-.EXAMPLE
     Write-Log -Message "Disk space is low" -Level WARN -LogPath "C:\Logs\system.log" -Output NoConsole
     Writes a warning log entry to the specified log file only, without console output.
 
@@ -316,13 +306,14 @@ function Invoke-Elevation {
 function Write-Log {
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
         [string]$Message,
 
         [ValidateScript( { Test-Path -Path $_ -IsValid } )]
         [string]$LogPath,
 
-        [ValidateSet('INFO','SUCC','WARN','EROR')]
+        [ValidateSet('INFO','SUCCESS','WARN','ERROR')]
         [string]$Level = 'INFO',
 
         [ValidateSet('ToConsole','NoConsole')]
@@ -338,8 +329,12 @@ function Write-Log {
     elseif ($Script:GlobalLogPath) {
         $LogPath = $Script:GlobalLogPath
     }
-    else {
+    elseif ($MyInvocation.PSCommandPath) {
         $LogPath = [System.IO.Path]::ChangeExtension($MyInvocation.PSCommandPath, '.log')
+    }
+    else {
+        Write-Host "Invalid LogPath path: '$LogPath'" -ForegroundColor Red 
+        return
     }
 
     # Determine Output parameter
@@ -358,20 +353,19 @@ function Write-Log {
     # Write log entry to file
     try {
         $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $Entry = "$Timestamp [$($Level.ToUpper())] $Message"
+        $Entry = "[$Timestamp] [$Level] $Message"
         Add-Content -Path $LogPath -Value $Entry -Encoding UTF8
         if ($Output -eq 'ToConsole') {
             switch ($Level) {
-                'EROR'  { Write-Host $Entry -ForegroundColor Red    ; break }
-                'WARN'  { Write-Host $Entry -ForegroundColor Yellow ; break }
-                'SUCC'  { Write-Host $Entry -ForegroundColor Green  ; break }
+                'ERROR' { Write-Host $Entry -ForegroundColor Red ; break }
+                'WARN' { Write-Host $Entry -ForegroundColor Yellow ; break }
+                'SUCCESS' { Write-Host $Entry -ForegroundColor Green ; break }
                 default { Write-Host $Entry -ForegroundColor Cyan }
             }
         }
     }
     catch {
-        Write-Host "Failed to write log file: '$LogPath'" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Error "$($_.Exception.GetType().Name)`nFailed to write log file: '$LogPath'`n$($_.Exception.Message)"
         return
     }
 }
