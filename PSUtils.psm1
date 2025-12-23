@@ -61,10 +61,10 @@
 function Invoke-Elevation {
     [CmdletBinding()]
     param(
-        [Alias('Path')]
+        [Alias('ScPath')]
         [string]$ScriptPath = $MyInvocation.PSCommandPath,
 
-        [Alias('WorkDir')]
+        [Alias('WorkDir', 'WorkPath')]
         [string]$WorkingDirectory = $MyInvocation.PSScriptRoot,
 
         [Alias('PowershellPath', 'PSPath', 'PS5Path')]
@@ -102,23 +102,38 @@ function Invoke-Elevation {
         $WorkingDirectory = Split-Path -Path $Script:GlobalScriptPath -Parent
     }
 
-    # Validate paths and cache parameters
-    $CacheMap = [ordered]@{
-        ScriptPath        = @{ Global = 'GlobalScriptPath'        ; Type = 'Leaf'      ; Exe = $null }
-        WorkingDirectory  = @{ Global = 'GlobalWorkingDirectory'  ; Type = 'Container' ; Exe = $null }
-        Powershell5Path   = @{ Global = 'GlobalPowershell5Path'   ; Type = 'Leaf'      ; Exe = 'powershell.exe' }
-        Powershell7Path   = @{ Global = 'GlobalPowershell7Path'   ; Type = 'Leaf'      ; Exe = 'pwsh.exe' }
-        TerminalPath      = @{ Global = 'GlobalTerminalPath'      ; Type = 'Leaf'      ; Exe = 'wt.exe' }
-        PowershellVersion = @{ Global = 'GlobalPowershellVersion' ; Type = $null       ; Exe = $null }
-        TerminalMode      = @{ Global = 'GlobalTerminalMode'      ; Type = $null       ; Exe = $null }
-        ExecutionPolicy   = @{ Global = 'GlobalExecutionPolicy'   ; Type = $null       ; Exe = $null }
+    # Set PowerShell version to 5 if PowerShell 5 path exists
+    if ((-not $PSBoundParameters.ContainsKey('PowershellVersion') -and -not $Script:GlobalPowershellVersion) -and ($PSBoundParameters.ContainsKey('Powershell5Path') -or $Script:GlobalPowershell5Path)) {
+        $PowershellVersion = '5'
     }
 
-    foreach ($LocalName in $CacheMap.Keys) {
-        $Config = $CacheMap[$LocalName]
-        $GlobalName = $Config.Global
-        $ValidationType = $Config.Type
-        $ExeName = $Config.Exe
+    # Set PowerShell version to 7 if PowerShell 7 path exists
+    if ((-not $PSBoundParameters.ContainsKey('PowershellVersion') -and -not $Script:GlobalPowershellVersion) -and ($PSBoundParameters.ContainsKey('Powershell7Path') -or $Script:GlobalPowershell7Path)) {
+        $PowershellVersion = '7'
+    }
+
+    # Set Terminal mode to UseTerminal if Terminal path exists
+    if ((-not $PSBoundParameters.ContainsKey('TerminalMode') -and -not $Script:GlobalTerminalMode) -and ($PSBoundParameters.ContainsKey('TerminalMode') -or $Script:GlobalTerminalMode)) {
+        $TerminalMode = 'UseTerminal'
+    }
+
+    # Validate paths and cache parameters
+    $CacheMap = @(
+        @{ Local = 'ScriptPath'        ; Global = 'GlobalScriptPath'        ; Type = 'Leaf'      ; Exe = $null }
+        @{ Local = 'WorkingDirectory'  ; Global = 'GlobalWorkingDirectory'  ; Type = 'Container' ; Exe = $null }
+        @{ Local = 'Powershell5Path'   ; Global = 'GlobalPowershell5Path'   ; Type = 'Leaf'      ; Exe = 'powershell.exe' }
+        @{ Local = 'Powershell7Path'   ; Global = 'GlobalPowershell7Path'   ; Type = 'Leaf'      ; Exe = 'pwsh.exe' }
+        @{ Local = 'TerminalPath'      ; Global = 'GlobalTerminalPath'      ; Type = 'Leaf'      ; Exe = 'wt.exe' }
+        @{ Local = 'PowershellVersion' ; Global = 'GlobalPowershellVersion' ; Type = $null       ; Exe = $null }
+        @{ Local = 'TerminalMode'      ; Global = 'GlobalTerminalMode'      ; Type = $null       ; Exe = $null }
+        @{ Local = 'ExecutionPolicy'   ; Global = 'GlobalExecutionPolicy'   ; Type = $null       ; Exe = $null }
+    )
+
+    foreach ($Item in $CacheMap) {
+        $LocalName = $Item.Local
+        $GlobalName = $Item.Global
+        $ValidationType = $Item.Type
+        $ExeName = $Item.Exe
         $LocalValue = Get-Variable -Name $LocalName -ValueOnly -ErrorAction SilentlyContinue
         $GlobalValue = Get-Variable -Name $GlobalName -ValueOnly -Scope Script -ErrorAction SilentlyContinue
 
@@ -150,7 +165,8 @@ function Invoke-Elevation {
 
     # Ensure ScriptPath is valid
     if (-not $ScriptPath) {
-        Write-Host "Invalid script path: '$ScriptPath'" -ForegroundColor Red 
+        Write-Host "Invalid script path: '$ScriptPath'" -ForegroundColor Red
+        $Script:GlobalScriptPath = $null
         return 
     }
 
@@ -175,7 +191,8 @@ function Invoke-Elevation {
             }
             else {
                 Write-Host "Unable to locate PowerShell 5 executable." -ForegroundColor Red
-                $Script:GlobalScriptPath = $null
+                $Script:GlobalPowershell5Path = $null
+                $Script:GlobalPowershellVersion = $null
                 return
             }
             break
@@ -186,7 +203,8 @@ function Invoke-Elevation {
             }
             else {
                 Write-Host "Unable to locate PowerShell 7 executable." -ForegroundColor Red
-                $Script:GlobalScriptPath = $null
+                $Script:GlobalPowershell7Path = $null
+                $Script:GlobalPowershellVersion = $null
                 return
             }
             break
@@ -211,6 +229,7 @@ function Invoke-Elevation {
             else {
                 Write-Host "Unable to locate Windows Terminal executable." -ForegroundColor Red
                 $Script:GlobalTerminalPath = $null
+                $Script:GlobalTerminalMode = $null
                 return
             }
             break
@@ -248,11 +267,10 @@ function Invoke-Elevation {
     try {
         Write-Host "Requesting elevation to administrator privileges..." -ForegroundColor Cyan
         Start-Process -FilePath $Executable -ArgumentList $Arguments -Verb 'RunAs' -WorkingDirectory $WorkingDirectory -ErrorAction 'Stop'
-        if ($ScriptPath -eq $MyInvocation.PSCommandPath) {
+        if ($MyInvocation.PSScriptRoot -and (Resolve-Path $ScriptPath).Path -eq (Resolve-Path $MyInvocation.PSCommandPath).Path) {
             exit 0
-        } else {
-            return
         }
+        return
     }
     catch {
         Write-Error "$($_.Exception.GetType().Name)`nFailed to elevate script file: '$ScriptPath'`n$($_.Exception.Message)"
